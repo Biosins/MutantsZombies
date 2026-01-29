@@ -9,96 +9,72 @@ import net.petemc.mutantszombies.MutantsZombies;
 @Mod.EventBusSubscriber(modid = MutantsZombies.MOD_ID, bus = Mod.EventBusSubscriber.Bus.MOD)
 public class Config
 {
-    public static boolean getBlisterZombiesSpawnNaturally() {
-        return blisterZombiesSpawnNaturally;
+    public static boolean getCommonZombiesSpawnNaturally() {
+        return commonZombiesSpawnNaturally;
     }
 
     public static boolean getCrawlersSpawnNaturally() {
         return crawlersSpawnNaturally;
     }
 
-    public static boolean getSpittersSpawnNaturally() {
-        return spittersSpawnNaturally;
+    public static boolean getBoomersSpawnNaturally() {
+        return boomersSpawnNaturally;
     }
 
     public static boolean getZombieBrutesSpawnNaturally() {
         return zombieBrutesSpawnNaturally;
     }
 
-    public static boolean getSplitHeadZombiesSpawnNaturally() {
-        return splitHeadZombieSpawnNaturally;
+    public static double getBoomerAlertRadius() {
+        return boomerAlertRadius;
     }
 
-    public static boolean getMutantBrutesSpawnNaturally() {
-        return mutantBrutesSpawnNaturally;
+    public static int getBruteSpawnCap() {
+        return bruteSpawnCap;
     }
 
-    public static boolean getRottenMutantsSpawnNaturally() {
-        return rottenMutantsSpawnNaturally;
-    }
-
-    public static boolean getMutantZombiesSpawnNaturally() {
-        return mutantZombieSpawnNaturally;
-    }
-
-    public static boolean getSpittersBreakLogsAndLeavesAroundThem() {
-        return spittersBreakLogsAndLeavesAroundThem;
+    public static int getBruteSpawnCooldown() {
+        return bruteSpawnCooldown;
     }
 
     public static boolean getZombieBrutesBreakLogsAndLeavesAroundThem() {
         return zombieBrutesBreakLogsAndLeavesAroundThem;
     }
 
-    public static boolean getMutantBrutesBreakLogsAndLeavesAroundThem() {
-        return mutantBrutesBreakLogsAndLeavesAroundThem;
-    }
-
     // Server Config
     private static final ForgeConfigSpec.Builder BUILDER_SERVER = new ForgeConfigSpec.Builder();
 
-    private static final ForgeConfigSpec.BooleanValue BLISTER_ZOMBIES_SPAWN_NATURALLY = BUILDER_SERVER
-            .comment("If true, Blister Zombies will spawn naturally | default: true")
-            .define("blisterZombiesSpawnNaturally", true);
+    private static final ForgeConfigSpec.BooleanValue COMMON_ZOMBIES_SPAWN_NATURALLY = BUILDER_SERVER
+            .comment("If true, Common Zombies will spawn naturally | default: true")
+            .define("commonZombiesSpawnNaturally", true);
 
     private static final ForgeConfigSpec.BooleanValue CRAWLERS_SPAWN_NATURALLY = BUILDER_SERVER
             .comment("If true, Crawlers will spawn naturally | default: true")
             .define("crawlersSpawnNaturally", true);
 
-    private static final ForgeConfigSpec.BooleanValue SPITTERS_SPAWN_NATURALLY = BUILDER_SERVER
-            .comment("If true, Spitter Zombies will spawn naturally | default: true")
-            .define("spitterZombiesSpawnNaturally", true);
+    private static final ForgeConfigSpec.BooleanValue BOOMERS_SPAWN_NATURALLY = BUILDER_SERVER
+            .comment("If true, Boomers will spawn naturally | default: true")
+            .define("boomersSpawnNaturally", true);
 
     private static final ForgeConfigSpec.BooleanValue ZOMBIE_BRUTES_SPAWN_NATURALLY = BUILDER_SERVER
             .comment("If true, Zombie Brutes will spawn naturally | default: true")
             .define("zombieBrutesSpawnNaturally", true);
 
-    private static final ForgeConfigSpec.BooleanValue SPLIT_HEAD_ZOMBIES_SPAWN_NATURALLY = BUILDER_SERVER
-            .comment("If true, Split Head Zombies will spawn naturally | default: true")
-            .define("splitHeadZombieSpawnNaturally", true);
+    private static final ForgeConfigSpec.DoubleValue BOOMER_ALERT_RADIUS = BUILDER_SERVER
+            .comment("Radius in blocks for Boomer explosion to alert zombies | default: 30.0")
+            .defineInRange("boomerAlertRadius", 30.0, 10.0, 50.0);
 
-    private static final ForgeConfigSpec.BooleanValue MUTANT_BRUTES_SPAWN_NATURALLY = BUILDER_SERVER
-            .comment("If true, Mutant Brutes will spawn naturally | default: true")
-            .define("mutantBrutesSpawnNaturally", true);
+    private static final ForgeConfigSpec.IntValue BRUTE_SPAWN_CAP = BUILDER_SERVER
+            .comment("Maximum number of zombies a Brute can have spawned at once | default: 20")
+            .defineInRange("bruteSpawnCap", 20, 5, 50);
 
-    private static final ForgeConfigSpec.BooleanValue ROTTEN_MUTANTS_SPAWN_NATURALLY = BUILDER_SERVER
-            .comment("If true, Rotten Mutants will spawn naturally | default: true")
-            .define("rottenMutantsSpawnNaturally", true);
-
-    private static final ForgeConfigSpec.BooleanValue MUTANT_ZOMBIES_SPAWN_NATURALLY = BUILDER_SERVER
-            .comment("If true, Mutant Zombies will spawn naturally | default: true")
-            .define("mutantZombieSpawnNaturally", true);
-
-    private static final ForgeConfigSpec.BooleanValue SPITTERS_BREAK_LOGS_AND_LEAVES = BUILDER_SERVER
-            .comment("If true, Spitters will break logs and leaves in their path | default: false")
-            .define("spittersBreakLogsAndLeavesAroundThem", false);
+    private static final ForgeConfigSpec.IntValue BRUTE_SPAWN_COOLDOWN = BUILDER_SERVER
+            .comment("Cooldown in ticks between Brute zombie spawns (20 ticks = 1 second) | default: 600")
+            .defineInRange("bruteSpawnCooldown", 600, 100, 1200);
 
     private static final ForgeConfigSpec.BooleanValue ZOMBIE_BRUTES_BREAK_LOGS_AND_LEAVES = BUILDER_SERVER
             .comment("If true, Zombie Brutes will break logs and leaves in their path | default: false")
             .define("zombieBrutesBreakLogsAndLeavesAroundThem", false);
-
-    private static final ForgeConfigSpec.BooleanValue MUTANT_BRUTES_BREAK_LOGS_AND_LEAVES = BUILDER_SERVER
-            .comment("If true, Mutant Brutes will break logs and leaves in their path | default: false")
-            .define("mutantBrutesBreakLogsAndLeavesAroundThem", false);
 
    public static final ForgeConfigSpec SPEC_SERVER = BUILDER_SERVER.build();
 
@@ -108,34 +84,28 @@ public class Config
     public static final ForgeConfigSpec SPEC_CLIENT = BUILDER_CLIENT.build();
 
 
-    private static boolean blisterZombiesSpawnNaturally = true;
+    private static boolean commonZombiesSpawnNaturally = true;
     private static boolean crawlersSpawnNaturally = true;
-    private static boolean spittersSpawnNaturally = true;
+    private static boolean boomersSpawnNaturally = true;
     private static boolean zombieBrutesSpawnNaturally = true;
-    private static boolean splitHeadZombieSpawnNaturally = true;
-    private static boolean mutantBrutesSpawnNaturally = true;
-    private static boolean rottenMutantsSpawnNaturally = true;
-    private static boolean mutantZombieSpawnNaturally = true;
-    private static boolean spittersBreakLogsAndLeavesAroundThem = false;
+    private static double boomerAlertRadius = 30.0;
+    private static int bruteSpawnCap = 20;
+    private static int bruteSpawnCooldown = 600;
     private static boolean zombieBrutesBreakLogsAndLeavesAroundThem = false;
-    private static boolean mutantBrutesBreakLogsAndLeavesAroundThem = false;
 
     @SubscribeEvent
     static void onLoad(final ModConfigEvent event)
     {
         if (SPEC_SERVER.isLoaded()) {
             MutantsZombies.LOGGER.info("Loading {} server config", MutantsZombies.MOD_ID);
-            blisterZombiesSpawnNaturally = BLISTER_ZOMBIES_SPAWN_NATURALLY.get();
+            commonZombiesSpawnNaturally = COMMON_ZOMBIES_SPAWN_NATURALLY.get();
             crawlersSpawnNaturally = CRAWLERS_SPAWN_NATURALLY.get();
-            spittersSpawnNaturally = SPITTERS_SPAWN_NATURALLY.get();
+            boomersSpawnNaturally = BOOMERS_SPAWN_NATURALLY.get();
             zombieBrutesSpawnNaturally = ZOMBIE_BRUTES_SPAWN_NATURALLY.get();
-            splitHeadZombieSpawnNaturally = SPLIT_HEAD_ZOMBIES_SPAWN_NATURALLY.get();
-            mutantBrutesSpawnNaturally = MUTANT_BRUTES_SPAWN_NATURALLY.get();
-            rottenMutantsSpawnNaturally = ROTTEN_MUTANTS_SPAWN_NATURALLY.get();
-            mutantZombieSpawnNaturally = MUTANT_ZOMBIES_SPAWN_NATURALLY.get();
-            spittersBreakLogsAndLeavesAroundThem = SPITTERS_BREAK_LOGS_AND_LEAVES.get();
+            boomerAlertRadius = BOOMER_ALERT_RADIUS.get();
+            bruteSpawnCap = BRUTE_SPAWN_CAP.get();
+            bruteSpawnCooldown = BRUTE_SPAWN_COOLDOWN.get();
             zombieBrutesBreakLogsAndLeavesAroundThem = ZOMBIE_BRUTES_BREAK_LOGS_AND_LEAVES.get();
-            mutantBrutesBreakLogsAndLeavesAroundThem = MUTANT_BRUTES_BREAK_LOGS_AND_LEAVES.get();
         }
         if (SPEC_CLIENT.isLoaded()) {
             MutantsZombies.LOGGER.info("Loading {} client config", MutantsZombies.MOD_ID);

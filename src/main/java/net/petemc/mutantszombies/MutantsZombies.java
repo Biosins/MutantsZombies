@@ -14,6 +14,7 @@ import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.minecraftforge.event.server.ServerStartingEvent;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import net.petemc.mutantszombies.config.Config;
+import net.petemc.mutantszombies.effect.ModEffects;
 import net.petemc.mutantszombies.entity.*;
 import net.petemc.mutantszombies.item.ModItems;
 import net.petemc.mutantszombies.sound.ModSounds;
@@ -40,6 +41,7 @@ public class MutantsZombies
         ModItems.register(modEventBus);
         ModEntities.register(modEventBus);
         ModSounds.register(modEventBus);
+        ModEffects.register(modEventBus);
 
         // Register the item to a creative tab
         modEventBus.addListener(this::addCreative);

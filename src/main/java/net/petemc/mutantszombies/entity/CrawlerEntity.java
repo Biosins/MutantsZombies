@@ -11,19 +11,14 @@ import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.damagesource.DamageTypes;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.Mob;
-import net.minecraft.world.entity.MobType;
 import net.minecraft.world.entity.SpawnPlacements;
 import net.minecraft.world.entity.SpawnPlacements.Type;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.goal.*;
-import net.minecraft.world.entity.ai.goal.target.HurtByTargetGoal;
-import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
 import net.minecraft.world.entity.ai.navigation.PathNavigation;
 import net.minecraft.world.entity.ai.navigation.WallClimberNavigation;
 import net.minecraft.world.entity.monster.Monster;
-import net.minecraft.world.entity.npc.AbstractVillager;
-import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biomes;
 import net.minecraft.world.level.block.state.BlockState;
@@ -34,34 +29,18 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.Objects;
 
-public class CrawlerEntity extends Monster {
+public class CrawlerEntity extends AbstractHordeZombieEntity {
     private static final EntityDataAccessor<Byte> DATA_FLAGS_ID = SynchedEntityData.defineId(CrawlerEntity.class, EntityDataSerializers.BYTE);
 
     public CrawlerEntity(EntityType<CrawlerEntity> type, Level world) {
         super(type, world);
-        this.setMaxUpStep(1.0F);
         this.xpReward = 5;
     }
 
-    protected void registerGoals() {
-        super.registerGoals();
-        this.goalSelector.addGoal(1, new FloatGoal(this));
-        this.goalSelector.addGoal(2, new LeapAtTargetGoal(this, 0.4F));
-        this.goalSelector.addGoal(3, new MeleeAttackGoal(this, 1.2, false));
-        this.goalSelector.addGoal(4, new RandomStrollGoal(this, 1.0F));
-        this.goalSelector.addGoal(5, new LookAtPlayerGoal(this, Player.class, 8.0F));
-        this.goalSelector.addGoal(6, new RandomLookAroundGoal(this));
-        this.targetSelector.addGoal(1, new HurtByTargetGoal(this, new Class[]{CrawlerEntity.class}).setAlertOthers(CrawlerEntity.class));
-        this.targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(this, Player.class, false));
-        this.targetSelector.addGoal(3, new NearestAttackableTargetGoal<>(this, AbstractVillager.class, true));
-        registerCustomGoals();
-    }
-
+    @Override
     protected void registerCustomGoals() {
-    }
-
-    public @NotNull MobType getMobType() {
-        return MobType.UNDEAD;
+        // Add Crawler-specific leap attack before melee
+        this.goalSelector.addGoal(2, new LeapAtTargetGoal(this, 0.4F));
     }
 
     protected void dropCustomDeathLoot(@NotNull DamageSource source, int looting, boolean recentlyHitIn) {
@@ -69,18 +48,17 @@ public class CrawlerEntity extends Monster {
         //TODO add drop
     }
 
+    @Override
+    protected SoundEvent getStepSoundEvent() {
+        return Objects.requireNonNull(ForgeRegistries.SOUND_EVENTS.getValue(ResourceLocation.parse("block.cave_vines.step")));
+    }
+
+    @Override
     public SoundEvent getAmbientSound() {
         return ForgeRegistries.SOUND_EVENTS.getValue(ResourceLocation.parse("entity.horse.breathe"));
     }
 
-    public void playStepSound(@NotNull BlockPos blockPos, @NotNull BlockState blockState) {
-        this.playSound(Objects.requireNonNull(ForgeRegistries.SOUND_EVENTS.getValue(ResourceLocation.parse("block.cave_vines.step"))), 0.15F, 1.0F);
-    }
-
-    public @NotNull SoundEvent getHurtSound(@NotNull DamageSource damageSource) {
-        return Objects.requireNonNull(ForgeRegistries.SOUND_EVENTS.getValue(ResourceLocation.parse("entity.zombie.hurt")));
-    }
-
+    @Override
     public @NotNull SoundEvent getDeathSound() {
         return Objects.requireNonNull(ForgeRegistries.SOUND_EVENTS.getValue(ResourceLocation.parse("entity.husk.death")));
     }
@@ -137,12 +115,9 @@ public class CrawlerEntity extends Monster {
 
     }
 
+    @Override
     public boolean hurt(DamageSource damageSource, float amount) {
         if (damageSource.is(DamageTypes.FALL)) {
-            return false;
-        } else if (damageSource.is(DamageTypes.DROWN)) {
-            return false;
-        } else if (damageSource.is(DamageTypes.WITHER)) {
             return false;
         }
         return super.hurt(damageSource, amount);
@@ -160,9 +135,8 @@ public class CrawlerEntity extends Monster {
     }
 
     public static AttributeSupplier.Builder createAttributes() {
-        return Mob.createMobAttributes()
+        return createBaseAttributes()
             .add(Attributes.MAX_HEALTH, 6.0)
-            .add(Attributes.FOLLOW_RANGE, 30.0)
             .add(Attributes.MOVEMENT_SPEED, 0.35)
             .add(Attributes.ATTACK_DAMAGE, 3.0)
             .add(Attributes.ARMOR, 0.0)

@@ -1,72 +1,83 @@
 package net.petemc.mutantszombies.entity;
 
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerBossEvent;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundEvents;
+import net.minecraft.world.BossEvent;
 import net.minecraft.world.Difficulty;
 import net.minecraft.world.damagesource.DamageSource;
-import net.minecraft.world.damagesource.DamageTypes;
 import net.minecraft.world.entity.*;
 import net.minecraft.world.entity.SpawnPlacements.Type;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
-import net.minecraft.world.entity.ai.goal.FloatGoal;
-import net.minecraft.world.entity.ai.goal.MeleeAttackGoal;
-import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
-import net.minecraft.world.entity.ai.goal.RandomStrollGoal;
-import net.minecraft.world.entity.ai.goal.target.HurtByTargetGoal;
-import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
-import net.minecraft.world.entity.animal.IronGolem;
-import net.minecraft.world.entity.monster.Monster;
-import net.minecraft.world.entity.npc.AbstractVillager;
-import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.ai.goal.Goal;
+import net.minecraft.world.level.Explosion;
+import net.minecraft.world.level.ExplosionDamageCalculator;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biomes;
-import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.Heightmap.Types;
+import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.level.BlockGetter;
 import net.minecraftforge.registries.ForgeRegistries;
 import net.petemc.mutantszombies.config.Config;
 import net.petemc.mutantszombies.sound.ModSounds;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.Objects;
+import java.util.*;
 
-public class ZombieBruteEntity extends Monster {
+public class ZombieBruteEntity extends AbstractHordeZombieEntity {
     private int attackTicksLeft;
     private int treeBreakCooldown = 30;
+    private int hordeSpawnCooldown = 0;
+    private final List<UUID> spawnedZombies = new ArrayList<>();
+    private final ServerBossEvent bossEvent = new ServerBossEvent(
+            this.getDisplayName(),
+            BossEvent.BossBarColor.RED,
+            BossEvent.BossBarOverlay.NOTCHED_20
+    );
 
     public ZombieBruteEntity(EntityType<ZombieBruteEntity> type, Level world) {
         super(type, world);
-        this.setMaxUpStep(1.0F);
         this.xpReward = 15;
     }
 
-    protected void registerGoals() {
-        super.registerGoals();
-        this.goalSelector.addGoal(1, new FloatGoal(this));
-        this.goalSelector.addGoal(2, new MeleeAttackGoal(this, 1.1, false));
-        this.goalSelector.addGoal(4, new RandomStrollGoal(this, 1.0F));
-        this.goalSelector.addGoal(5, new RandomLookAroundGoal(this));
-        this.targetSelector.addGoal(1, new HurtByTargetGoal(this, new Class[]{ZombieBruteEntity.class}).setAlertOthers(ZombieBruteEntity.class));
-        this.targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(this, Player.class, false));
-        this.targetSelector.addGoal(3, new NearestAttackableTargetGoal<>(this, IronGolem.class, true,true));
-        this.targetSelector.addGoal(3, new NearestAttackableTargetGoal<>(this, AbstractVillager.class, true, true));
-        registerCustomGoals();
+    @Override
+    protected void registerCustomGoals() {
+        // Add horde magnet goal
+        this.goalSelector.addGoal(3, new HordeMagnetGoal(this));
+    }
+
+    @Override
+    protected void customServerAiStep() {
+        super.customServerAiStep();
+        // Update boss bar health
+        this.bossEvent.setProgress(this.getHealth() / this.getMaxHealth());
+    }
+
+    @Override
+    public void startSeenByPlayer(@NotNull ServerPlayer player) {
+        super.startSeenByPlayer(player);
+        this.bossEvent.addPlayer(player);
+    }
+
+    @Override
+    public void stopSeenByPlayer(@NotNull ServerPlayer player) {
+        super.stopSeenByPlayer(player);
+        this.bossEvent.removePlayer(player);
+    }
+
+    @Override
+    protected void setCustomName(@javax.annotation.Nullable net.minecraft.network.chat.Component name) {
+        super.setCustomName(name);
+        this.bossEvent.setName(this.getDisplayName());
     }
 
     protected void registerCustomGoals() {
-    }
-
-    public @NotNull MobType getMobType() {
-        return MobType.UNDEAD;
-    }
-
-    public boolean isAggressive() {
-        return super.isAggressive();
     }
 
     protected void dropCustomDeathLoot(@NotNull DamageSource source, int looting, boolean recentlyHitIn) {
@@ -74,28 +85,22 @@ public class ZombieBruteEntity extends Monster {
         //TODO add drop
     }
 
+    @Override
     public SoundEvent getAmbientSound() {
         return ModSounds.ROAR_SOUND.get();
     }
 
-    public void playStepSound(@NotNull BlockPos pos, @NotNull BlockState blockIn) {
-        this.playSound(Objects.requireNonNull(ForgeRegistries.SOUND_EVENTS.getValue(ResourceLocation.parse("block.rooted_dirt.step"))), 0.15F, 1.0F);
+    @Override
+    protected SoundEvent getStepSoundEvent() {
+        return Objects.requireNonNull(ForgeRegistries.SOUND_EVENTS.getValue(ResourceLocation.parse("block.rooted_dirt.step")));
     }
 
-    public @NotNull SoundEvent getHurtSound(@NotNull DamageSource ds) {
-        return Objects.requireNonNull(ForgeRegistries.SOUND_EVENTS.getValue(ResourceLocation.parse("entity.zombie.hurt")));
-    }
-
+    @Override
     public @NotNull SoundEvent getDeathSound() {
         return Objects.requireNonNull(ForgeRegistries.SOUND_EVENTS.getValue(ResourceLocation.parse("entity.zombie.death")));
     }
 
     public boolean hurt(DamageSource damageSource, float amount) {
-        if (damageSource.is(DamageTypes.DROWN)) {
-            return false;
-        } else if (damageSource.is(DamageTypes.WITHER)) {
-            return false;
-        }
         return super.hurt(damageSource, amount);
     }
 
@@ -123,6 +128,23 @@ public class ZombieBruteEntity extends Monster {
         this.attackTicksLeft = 10;
         this.level().broadcastEntityEvent(this, (byte)4);
         this.playSound(SoundEvents.IRON_GOLEM_ATTACK, 1.0F, 1.0F);
+        
+        // Create silent block-breaking explosion at impact point
+        if (!this.level().isClientSide()) {
+            Explosion explosion = new Explosion(
+                    this.level(),
+                    this,
+                    null,
+                    new BlockBreakingExplosionCalculator(),
+                    target.getX(), target.getY(), target.getZ(),
+                    3.0F,
+                    false,
+                    Explosion.BlockInteraction.DESTROY
+            );
+            explosion.explode();
+            explosion.finalizeExplosion(false); // false = no sound/particles
+        }
+        
         return bl;
     }
 
@@ -183,13 +205,100 @@ public class ZombieBruteEntity extends Monster {
     }
 
     public static AttributeSupplier.Builder createAttributes() {
-        return Mob.createMobAttributes()
+        return createBaseAttributes()
             .add(Attributes.MAX_HEALTH, 100.0)
-            .add(Attributes.FOLLOW_RANGE, 25.0)
             .add(Attributes.MOVEMENT_SPEED, 0.21)
             .add(Attributes.ATTACK_DAMAGE, 16.0)
             .add(Attributes.ARMOR, 16.0)
             .add(Attributes.ATTACK_KNOCKBACK, 1.5)
             .add(Attributes.KNOCKBACK_RESISTANCE, 1.0);
     }
+
+    // Inner class: Horde Magnet Goal
+    static class HordeMagnetGoal extends Goal {
+        private final ZombieBruteEntity brute;
+        private int cooldown = 0;
+
+        public HordeMagnetGoal(ZombieBruteEntity brute) {
+            this.brute = brute;
+        }
+
+        @Override
+        public boolean canUse() {
+            return brute.getTarget() != null;
+        }
+
+        @Override
+        public void tick() {
+            if (cooldown > 0) {
+                cooldown--;
+                return;
+            }
+
+            // Clean up dead zombies from tracking list
+            brute.spawnedZombies.removeIf(uuid -> {
+                Entity entity = ((net.minecraft.server.level.ServerLevel) brute.level())
+                        .getEntity(uuid);
+                return entity == null || !entity.isAlive();
+            });
+
+            // Spawn new zombies if under cap
+            int maxSpawns = Config.getBruteSpawnCap();
+            if (brute.spawnedZombies.size() < maxSpawns) {
+                int toSpawn = Math.min(3, maxSpawns - brute.spawnedZombies.size());
+                
+                for (int i = 0; i < toSpawn; i++) {
+                    // Spawn CommonZombie near the brute
+                    CommonZombieEntity zombie = ModEntities.COMMON_ZOMBIE.get().create(brute.level());
+                    if (zombie != null) {
+                        double angle = brute.random.nextDouble() * Math.PI * 2;
+                        double distance = 8.0 + brute.random.nextDouble() * 8.0;
+                        double x = brute.getX() + Math.cos(angle) * distance;
+                        double z = brute.getZ() + Math.sin(angle) * distance;
+                        double y = brute.getY();
+                        
+                        zombie.moveTo(x, y, z, brute.random.nextFloat() * 360, 0);
+                        zombie.finalizeSpawn(
+                                (net.minecraft.server.level.ServerLevel) brute.level(),
+                                brute.level().getCurrentDifficultyAt(zombie.blockPosition()),
+                                MobSpawnType.MOB_SUMMONED,
+                                null,
+                                null
+                        );
+                        
+                        // Set target to same as brute
+                        if (brute.getTarget() != null) {
+                            zombie.setTarget(brute.getTarget());
+                        }
+                        
+                        brute.level().addFreshEntity(zombie);
+                        brute.spawnedZombies.add(zombie.getUUID());
+                    }
+                }
+                
+                cooldown = Config.getBruteSpawnCooldown();
+            }
+        }
+    }
+
+    // Inner class: Block Breaking Explosion Calculator
+    static class BlockBreakingExplosionCalculator extends ExplosionDamageCalculator {
+        @Override
+        public Optional<Float> getBlockExplosionResistance(
+                Explosion explosion, BlockGetter level,
+                BlockPos pos, BlockState state, FluidState fluid) {
+            // Lower resistance = easier to break
+            return Optional.of(0.5F);
+        }
+
+        @Override
+        public boolean shouldBlockExplode(
+                Explosion explosion, BlockGetter level,
+                BlockPos pos, BlockState state, float power) {
+            // Only break blocks within 3x3x3 area of explosion center
+            BlockPos center = BlockPos.containing(explosion.center());
+            return Math.abs(pos.getX() - center.getX()) <= 1
+                    && Math.abs(pos.getY() - center.getY()) <= 1
+                    && Math.abs(pos.getZ() - center.getZ()) <= 1;
+        }
 }
