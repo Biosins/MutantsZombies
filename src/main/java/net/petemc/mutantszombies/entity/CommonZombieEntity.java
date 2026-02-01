@@ -1,26 +1,35 @@
 package net.petemc.mutantszombies.entity;
 
-import net.minecraft.nbt.CompoundTag;
-import net.minecraft.server.level.ServerLevel;
+import java.util.UUID;
+
+import javax.annotation.Nullable;
+
+import net.minecraft.util.TimeUtil;
+import net.minecraft.util.valueproviders.UniformInt;
 import net.minecraft.world.Difficulty;
-import net.minecraft.world.damagesource.DamageSource;
-import net.minecraft.world.damagesource.DamageTypes;
-import net.minecraft.world.entity.*;
+import net.minecraft.world.entity.EntitySelector;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.NeutralMob;
+import net.minecraft.world.entity.SpawnPlacements;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.entity.ai.goal.MeleeAttackGoal;
+import net.minecraft.world.entity.ai.goal.WaterAvoidingRandomStrollGoal;
 import net.minecraft.world.entity.ai.goal.target.HurtByTargetGoal;
+import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
+import net.minecraft.world.entity.ai.goal.target.ResetUniversalAngerTargetGoal;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biomes;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.phys.AABB;
 import net.petemc.mutantszombies.config.Config;
-import org.jetbrains.annotations.NotNull;
-
-import javax.annotation.Nullable;
-import java.util.List;
-import java.util.UUID;
 
 public class CommonZombieEntity extends AbstractHordeZombieEntity implements NeutralMob {
+    private static final double BASE_SPEED = 0.20; // Slow when calm
+    private static final UniformInt PERSISTENT_ANGER_TIME = TimeUtil.rangeOfSeconds(20, 39);
+
     private int remainingPersistentAngerTime;
     @Nullable
     private UUID persistentAngerTarget;
@@ -30,44 +39,42 @@ public class CommonZombieEntity extends AbstractHordeZombieEntity implements Neu
     }
 
     @Override
-    protected void registerCustomGoals() {
-        // Replace the default HurtByTargetGoal with one that alerts ALL horde zombies
-        this.targetSelector.removeGoal(this.targetSelector.getAvailableGoals().stream()
-                .filter(goal -> goal.getGoal() instanceof HurtByTargetGoal)
-                .findFirst()
-                .map(goal -> goal.getGoal())
-                .orElse(null));
-        
-        // Add cross-type alert behavior
-        this.targetSelector.addGoal(2, new HurtByTargetGoal(this) {
-            @Override
-            public void start() {
-                super.start();
-                // Alert all horde zombies, not just same type
-                alertNearbyZombies(this.mob.getLastHurtByMob());
-            }
-        }.setAlertOthers());
+    public void setPersistentAngerTarget(@Nullable UUID target) {
+        this.persistentAngerTarget = target;
     }
 
     @Override
-    public boolean hurt(@NotNull DamageSource damageSource, float amount) {
-        if (damageSource.is(DamageTypes.DROWN) || damageSource.is(DamageTypes.WITHER)) {
-            return false;
-        }
-        
-        // Set anger when hurt
-        if (!this.level().isClientSide() && damageSource.getEntity() instanceof LivingEntity attacker) {
-            this.startPersistentAngerTimer();
-            this.setPersistentAngerTarget(attacker.getUUID());
-        }
-        
-        return super.hurt(damageSource, amount);
+    public UUID getPersistentAngerTarget() {
+        return this.persistentAngerTarget;
     }
 
-    // NeutralMob implementation
     @Override
-    public int getRemainingPersistentAngerTime() {
-        return this.remainingPersistentAngerTime;
+    public void registerGoals() {
+        super.registerGoals();
+
+        this.goalSelector.addGoal(2, new MeleeAttackGoal(this, 2.0, true));
+        this.goalSelector.addGoal(7, new WaterAvoidingRandomStrollGoal(this, 1.0));
+        this.targetSelector.addGoal(1, new HurtByTargetGoal(this).setAlertOthers());
+        this.targetSelector.addGoal(2,
+                new NearestAttackableTargetGoal<Player>(this, Player.class, 10, true, false, this::isAngryAt));
+        this.targetSelector.addGoal(3, new ResetUniversalAngerTargetGoal<>(this, true));
+    }
+
+    private void alertOthers() {
+        double $$0 = this.getAttributeValue(Attributes.FOLLOW_RANGE);
+        AABB $$1 = AABB.unitCubeFromLowerCorner(this.position()).inflate($$0, 10.0, $$0);
+        this.level()
+                .getEntitiesOfClass(CommonZombieEntity.class, $$1, EntitySelector.NO_SPECTATORS)
+                .stream()
+                .filter($$0x -> $$0x != this)
+                .filter($$0x -> $$0x.getTarget() == null)
+                .filter($$0x -> !$$0x.isAlliedTo(this.getTarget()))
+                .forEach($$0x -> $$0x.setTarget(this.getTarget()));
+    }
+
+    @Override
+    public void startPersistentAngerTimer() {
+        this.setRemainingPersistentAngerTime(PERSISTENT_ANGER_TIME.sample(this.random));
     }
 
     @Override
@@ -76,46 +83,14 @@ public class CommonZombieEntity extends AbstractHordeZombieEntity implements Neu
     }
 
     @Override
-    @Nullable
-    public UUID getPersistentAngerTarget() {
-        return this.persistentAngerTarget;
-    }
-
-    @Override
-    public void setPersistentAngerTarget(@Nullable UUID target) {
-        this.persistentAngerTarget = target;
-    }
-
-    @Override
-    public void startPersistentAngerTimer() {
-        this.setRemainingPersistentAngerTime(800 + this.random.nextInt(200)); // 40-50 seconds
-    }
-
-    @Override
-    protected void customServerAiStep() {
-        super.customServerAiStep();
-        
-        // Update anger management
-        if (!this.level().isClientSide) {
-            this.updatePersistentAnger((ServerLevel) this.level(), true);
-        }
-    }
-
-    @Override
-    public void addAdditionalSaveData(@NotNull CompoundTag tag) {
-        super.addAdditionalSaveData(tag);
-        this.addPersistentAngerSaveData(tag);
-    }
-
-    @Override
-    public void readAdditionalSaveData(@NotNull CompoundTag tag) {
-        super.readAdditionalSaveData(tag);
-        this.readPersistentAngerSaveData(this.level(), tag);
+    public int getRemainingPersistentAngerTime() {
+        return this.remainingPersistentAngerTime;
     }
 
     public static AttributeSupplier.Builder createAttributes() {
         return createBaseAttributes()
                 .add(Attributes.MAX_HEALTH, 20.0)
+                .add(Attributes.MOVEMENT_SPEED, BASE_SPEED) // Start slow
                 .add(Attributes.ATTACK_DAMAGE, 4.0)
                 .add(Attributes.ARMOR, 0.0);
     }
@@ -124,12 +99,11 @@ public class CommonZombieEntity extends AbstractHordeZombieEntity implements Neu
         SpawnPlacements.register(ModEntities.COMMON_ZOMBIE.get(),
                 SpawnPlacements.Type.ON_GROUND,
                 Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
-                (entityType, serverLevel, reason, pos, random) ->
-                        Config.getCommonZombiesSpawnNaturally()
-                                && !(serverLevel.getBiome(pos).is(Biomes.MUSHROOM_FIELDS))
-                                && !(serverLevel.getBiome(pos).is(Biomes.DEEP_DARK))
-                                && serverLevel.getDifficulty() != Difficulty.PEACEFUL
-                                && serverLevel.getRawBrightness(pos, 0) <= 8
-                                && Mob.checkMobSpawnRules(entityType, serverLevel, reason, pos, random));
+                (entityType, serverLevel, reason, pos, random) -> Config.getCommonZombiesSpawnNaturally()
+                        && !(serverLevel.getBiome(pos).is(Biomes.MUSHROOM_FIELDS))
+                        && !(serverLevel.getBiome(pos).is(Biomes.DEEP_DARK))
+                        && serverLevel.getDifficulty() != Difficulty.PEACEFUL
+                        && serverLevel.getRawBrightness(pos, 0) <= 8
+                        && Mob.checkMobSpawnRules(entityType, serverLevel, reason, pos, random));
     }
 }
