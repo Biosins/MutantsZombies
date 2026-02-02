@@ -1,5 +1,13 @@
 package net.petemc.mutantszombies.entity;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.UUID;
+
+import org.jetbrains.annotations.NotNull;
+
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerBossEvent;
@@ -9,11 +17,16 @@ import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.BossEvent;
 import net.minecraft.world.Difficulty;
 import net.minecraft.world.damagesource.DamageSource;
-import net.minecraft.world.entity.*;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.MobSpawnType;
+import net.minecraft.world.entity.SpawnPlacements;
 import net.minecraft.world.entity.SpawnPlacements.Type;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.goal.Goal;
+import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Explosion;
 import net.minecraft.world.level.ExplosionDamageCalculator;
 import net.minecraft.world.level.Level;
@@ -22,24 +35,21 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.Heightmap.Types;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.phys.AABB;
-import net.minecraft.world.level.BlockGetter;
 import net.minecraftforge.registries.ForgeRegistries;
 import net.petemc.mutantszombies.config.Config;
 import net.petemc.mutantszombies.sound.ModSounds;
-import org.jetbrains.annotations.NotNull;
-
-import java.util.*;
 
 public class ZombieBruteEntity extends AbstractHordeZombieEntity {
     private int attackTicksLeft;
     private int treeBreakCooldown = 30;
-    private int hordeSpawnCooldown = 0;
     private final List<UUID> spawnedZombies = new ArrayList<>();
+    private BlockPos lastTargetPos = null;
+    private int stuckTicks = 0;
+    private static final String BRUTE_EXPLOSION_SOURCE = "brute_melee_explosion";
     private final ServerBossEvent bossEvent = new ServerBossEvent(
             this.getDisplayName(),
             BossEvent.BossBarColor.RED,
-            BossEvent.BossBarOverlay.NOTCHED_20
-    );
+            BossEvent.BossBarOverlay.NOTCHED_20);
 
     public ZombieBruteEntity(EntityType<ZombieBruteEntity> type, Level world) {
         super(type, world);
@@ -47,7 +57,7 @@ public class ZombieBruteEntity extends AbstractHordeZombieEntity {
     }
 
     @Override
-    protected void registerCustomGoals() {
+    protected void registerGoals() {
         // Add horde magnet goal
         this.goalSelector.addGoal(3, new HordeMagnetGoal(this));
     }
@@ -72,17 +82,9 @@ public class ZombieBruteEntity extends AbstractHordeZombieEntity {
     }
 
     @Override
-    protected void setCustomName(@javax.annotation.Nullable net.minecraft.network.chat.Component name) {
+    public void setCustomName(@javax.annotation.Nullable net.minecraft.network.chat.Component name) {
         super.setCustomName(name);
         this.bossEvent.setName(this.getDisplayName());
-    }
-
-    protected void registerCustomGoals() {
-    }
-
-    protected void dropCustomDeathLoot(@NotNull DamageSource source, int looting, boolean recentlyHitIn) {
-        super.dropCustomDeathLoot(source, looting, recentlyHitIn);
-        //TODO add drop
     }
 
     @Override
@@ -92,15 +94,21 @@ public class ZombieBruteEntity extends AbstractHordeZombieEntity {
 
     @Override
     protected SoundEvent getStepSoundEvent() {
-        return Objects.requireNonNull(ForgeRegistries.SOUND_EVENTS.getValue(ResourceLocation.parse("block.rooted_dirt.step")));
+        return Objects.requireNonNull(
+                ForgeRegistries.SOUND_EVENTS.getValue(ResourceLocation.parse("block.rooted_dirt.step")));
     }
 
     @Override
     public @NotNull SoundEvent getDeathSound() {
-        return Objects.requireNonNull(ForgeRegistries.SOUND_EVENTS.getValue(ResourceLocation.parse("entity.zombie.death")));
+        return Objects
+                .requireNonNull(ForgeRegistries.SOUND_EVENTS.getValue(ResourceLocation.parse("entity.zombie.death")));
     }
 
     public boolean hurt(DamageSource damageSource, float amount) {
+        // Immune to own melee explosion
+        if (damageSource.getMsgId().equals(BRUTE_EXPLOSION_SOURCE)) {
+            return false;
+        }
         return super.hurt(damageSource, amount);
     }
 
@@ -126,28 +134,75 @@ public class ZombieBruteEntity extends AbstractHordeZombieEntity {
     public boolean doHurtTarget(@NotNull Entity target) {
         boolean bl = super.doHurtTarget(target);
         this.attackTicksLeft = 10;
-        this.level().broadcastEntityEvent(this, (byte)4);
+        this.level().broadcastEntityEvent(this, (byte) 4);
         this.playSound(SoundEvents.IRON_GOLEM_ATTACK, 1.0F, 1.0F);
-        
-        // Create silent block-breaking explosion at impact point
-        if (!this.level().isClientSide()) {
+
+        // Only create explosion when pathfinding fails (brute is stuck)
+        if (!this.level().isClientSide() && isStuckOrCannotPath()) {
+            // Calculate explosion position offset away from brute (in front/towards target)
+            double offsetDistance = this.getBbWidth() + 0.5; // Just beyond brute's hitbox
+            net.minecraft.world.phys.Vec3 direction = target.position().subtract(this.position()).normalize();
+            double explosionX = this.getX() + direction.x * offsetDistance;
+            double explosionY = this.getY() + 0.5;
+            double explosionZ = this.getZ() + direction.z * offsetDistance;
+
+            // Create custom damage source for this specific explosion
+            DamageSource bruteExplosionSource = new DamageSource(
+                    this.level().registryAccess()
+                            .registryOrThrow(net.minecraft.core.registries.Registries.DAMAGE_TYPE)
+                            .getHolderOrThrow(net.minecraft.world.damagesource.DamageTypes.EXPLOSION),
+                    this, this) {
+                @Override
+                public String getMsgId() {
+                    return BRUTE_EXPLOSION_SOURCE;
+                }
+            };
+
+            // Smaller explosion (1.5F instead of 3.0F)
             Explosion explosion = new Explosion(
                     this.level(),
                     this,
-                    null,
+                    bruteExplosionSource,
                     new BlockBreakingExplosionCalculator(),
-                    target.getX(), target.getY(), target.getZ(),
-                    3.0F,
+                    explosionX, explosionY, explosionZ,
+                    1.5F,
                     false,
-                    Explosion.BlockInteraction.DESTROY
-            );
+                    Explosion.BlockInteraction.DESTROY);
             explosion.explode();
             explosion.finalizeExplosion(false); // false = no sound/particles
         }
-        
+
         return bl;
     }
 
+    /**
+     * Check if brute is stuck or cannot path to target
+     */
+    private boolean isStuckOrCannotPath() {
+        if (this.getTarget() == null) {
+            return false;
+        }
+
+        // Check if navigation is stuck/cannot reach target
+        if (this.getNavigation().isDone() && this.distanceTo(this.getTarget()) > 3.0) {
+            return true;
+        }
+
+        // Track if brute hasn't moved towards target
+        BlockPos targetPos = this.getTarget().blockPosition();
+        if (lastTargetPos != null && lastTargetPos.equals(targetPos)) {
+            stuckTicks++;
+            if (stuckTicks > 40) { // Stuck for 2 seconds
+                stuckTicks = 0;
+                return true;
+            }
+        } else {
+            lastTargetPos = targetPos;
+            stuckTicks = 0;
+        }
+
+        return false;
+    }
 
     @Override
     public void handleEntityEvent(byte status) {
@@ -171,7 +226,7 @@ public class ZombieBruteEntity extends AbstractHordeZombieEntity {
 
                     AABB box = new AABB(this.position(), this.position());
                     box = box.inflate(2);
-                    box = box.inflate(0,1,0);
+                    box = box.inflate(0, 1, 0);
 
                     BlockPos.MutableBlockPos.betweenClosedStream(box)
                             .filter(c -> ((level().getBlockState(c).getBlock().toString().contains("leaves")) ||
@@ -195,23 +250,21 @@ public class ZombieBruteEntity extends AbstractHordeZombieEntity {
 
     public static void init() {
         SpawnPlacements.register(ModEntities.ZOMBIE_BRUTE.get(), Type.ON_GROUND, Types.MOTION_BLOCKING_NO_LEAVES,
-                (entityType, serverLevel, reason, pos, random) ->
-                        Config.getZombieBrutesSpawnNaturally()
-                                && !(serverLevel.getBiome(pos).is(Biomes.MUSHROOM_FIELDS))
-                                && !(serverLevel.getBiome(pos).is(Biomes.DEEP_DARK))
-                                && serverLevel.getDifficulty() != Difficulty.PEACEFUL
-                                && Monster.isDarkEnoughToSpawn(serverLevel, pos, random)
-                                && Mob.checkMobSpawnRules(entityType, serverLevel, reason, pos, random));
+                (entityType, serverLevel, reason, pos, random) -> Config.getZombieBrutesSpawnNaturally()
+                        && !(serverLevel.getBiome(pos).is(Biomes.MUSHROOM_FIELDS))
+                        && !(serverLevel.getBiome(pos).is(Biomes.DEEP_DARK))
+                        && serverLevel.getDifficulty() != Difficulty.PEACEFUL
+                        && Mob.checkMobSpawnRules(entityType, serverLevel, reason, pos, random));
     }
 
     public static AttributeSupplier.Builder createAttributes() {
         return createBaseAttributes()
-            .add(Attributes.MAX_HEALTH, 100.0)
-            .add(Attributes.MOVEMENT_SPEED, 0.21)
-            .add(Attributes.ATTACK_DAMAGE, 16.0)
-            .add(Attributes.ARMOR, 16.0)
-            .add(Attributes.ATTACK_KNOCKBACK, 1.5)
-            .add(Attributes.KNOCKBACK_RESISTANCE, 1.0);
+                .add(Attributes.MAX_HEALTH, 300.0)
+                .add(Attributes.MOVEMENT_SPEED, 0.21)
+                .add(Attributes.ATTACK_DAMAGE, 16.0)
+                .add(Attributes.ARMOR, 16.0)
+                .add(Attributes.ATTACK_KNOCKBACK, 1.5)
+                .add(Attributes.KNOCKBACK_RESISTANCE, 1.0);
     }
 
     // Inner class: Horde Magnet Goal
@@ -246,7 +299,7 @@ public class ZombieBruteEntity extends AbstractHordeZombieEntity {
             int maxSpawns = Config.getBruteSpawnCap();
             if (brute.spawnedZombies.size() < maxSpawns) {
                 int toSpawn = Math.min(3, maxSpawns - brute.spawnedZombies.size());
-                
+
                 for (int i = 0; i < toSpawn; i++) {
                     // Spawn CommonZombie near the brute
                     CommonZombieEntity zombie = ModEntities.COMMON_ZOMBIE.get().create(brute.level());
@@ -256,26 +309,25 @@ public class ZombieBruteEntity extends AbstractHordeZombieEntity {
                         double x = brute.getX() + Math.cos(angle) * distance;
                         double z = brute.getZ() + Math.sin(angle) * distance;
                         double y = brute.getY();
-                        
+
                         zombie.moveTo(x, y, z, brute.random.nextFloat() * 360, 0);
                         zombie.finalizeSpawn(
                                 (net.minecraft.server.level.ServerLevel) brute.level(),
                                 brute.level().getCurrentDifficultyAt(zombie.blockPosition()),
                                 MobSpawnType.MOB_SUMMONED,
                                 null,
-                                null
-                        );
-                        
+                                null);
+
                         // Set target to same as brute
                         if (brute.getTarget() != null) {
                             zombie.setTarget(brute.getTarget());
                         }
-                        
+
                         brute.level().addFreshEntity(zombie);
                         brute.spawnedZombies.add(zombie.getUUID());
                     }
                 }
-                
+
                 cooldown = Config.getBruteSpawnCooldown();
             }
         }
@@ -296,9 +348,10 @@ public class ZombieBruteEntity extends AbstractHordeZombieEntity {
                 Explosion explosion, BlockGetter level,
                 BlockPos pos, BlockState state, float power) {
             // Only break blocks within 3x3x3 area of explosion center
-            BlockPos center = BlockPos.containing(explosion.center());
+            BlockPos center = BlockPos.containing(explosion.getPosition());
             return Math.abs(pos.getX() - center.getX()) <= 1
                     && Math.abs(pos.getY() - center.getY()) <= 1
                     && Math.abs(pos.getZ() - center.getZ()) <= 1;
         }
+    }
 }

@@ -14,8 +14,6 @@ import net.minecraft.world.entity.NeutralMob;
 import net.minecraft.world.entity.SpawnPlacements;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
-import net.minecraft.world.entity.ai.goal.MeleeAttackGoal;
-import net.minecraft.world.entity.ai.goal.WaterAvoidingRandomStrollGoal;
 import net.minecraft.world.entity.ai.goal.target.HurtByTargetGoal;
 import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
 import net.minecraft.world.entity.ai.goal.target.ResetUniversalAngerTargetGoal;
@@ -52,12 +50,14 @@ public class CommonZombieEntity extends AbstractHordeZombieEntity implements Neu
     public void registerGoals() {
         super.registerGoals();
 
-        this.goalSelector.addGoal(2, new MeleeAttackGoal(this, 2.0, true));
-        this.goalSelector.addGoal(7, new WaterAvoidingRandomStrollGoal(this, 1.0));
         this.targetSelector.addGoal(1, new HurtByTargetGoal(this).setAlertOthers());
         this.targetSelector.addGoal(2,
                 new NearestAttackableTargetGoal<Player>(this, Player.class, 10, true, false, this::isAngryAt));
-        this.targetSelector.addGoal(3, new ResetUniversalAngerTargetGoal<>(this, true));
+        this.targetSelector.addGoal(3,
+                new NearestAttackableTargetGoal<Player>(this, Player.class, 10, true, false, entity -> {
+                    return entity.hasEffect(net.petemc.mutantszombies.effect.ModEffects.SLIMED.get());
+                }));
+        this.targetSelector.addGoal(4, new ResetUniversalAngerTargetGoal<>(this, true));
     }
 
     private void alertOthers() {
@@ -103,7 +103,6 @@ public class CommonZombieEntity extends AbstractHordeZombieEntity implements Neu
                         && !(serverLevel.getBiome(pos).is(Biomes.MUSHROOM_FIELDS))
                         && !(serverLevel.getBiome(pos).is(Biomes.DEEP_DARK))
                         && serverLevel.getDifficulty() != Difficulty.PEACEFUL
-                        && serverLevel.getRawBrightness(pos, 0) <= 8
                         && Mob.checkMobSpawnRules(entityType, serverLevel, reason, pos, random));
     }
 }

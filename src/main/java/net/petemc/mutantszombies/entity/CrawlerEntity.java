@@ -1,6 +1,9 @@
 package net.petemc.mutantszombies.entity;
 
-import net.minecraft.core.BlockPos;
+import java.util.Objects;
+
+import org.jetbrains.annotations.NotNull;
+
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
@@ -15,22 +18,20 @@ import net.minecraft.world.entity.SpawnPlacements;
 import net.minecraft.world.entity.SpawnPlacements.Type;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
-import net.minecraft.world.entity.ai.goal.*;
+import net.minecraft.world.entity.ai.goal.LeapAtTargetGoal;
+import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
 import net.minecraft.world.entity.ai.navigation.PathNavigation;
 import net.minecraft.world.entity.ai.navigation.WallClimberNavigation;
-import net.minecraft.world.entity.monster.Monster;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biomes;
-import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.Heightmap.Types;
 import net.minecraftforge.registries.ForgeRegistries;
 import net.petemc.mutantszombies.config.Config;
-import org.jetbrains.annotations.NotNull;
-
-import java.util.Objects;
 
 public class CrawlerEntity extends AbstractHordeZombieEntity {
-    private static final EntityDataAccessor<Byte> DATA_FLAGS_ID = SynchedEntityData.defineId(CrawlerEntity.class, EntityDataSerializers.BYTE);
+    private static final EntityDataAccessor<Byte> DATA_FLAGS_ID = SynchedEntityData.defineId(CrawlerEntity.class,
+            EntityDataSerializers.BYTE);
 
     public CrawlerEntity(EntityType<CrawlerEntity> type, Level world) {
         super(type, world);
@@ -38,19 +39,17 @@ public class CrawlerEntity extends AbstractHordeZombieEntity {
     }
 
     @Override
-    protected void registerCustomGoals() {
+    protected void registerGoals() {
         // Add Crawler-specific leap attack before melee
+        super.registerGoals();
         this.goalSelector.addGoal(2, new LeapAtTargetGoal(this, 0.4F));
-    }
-
-    protected void dropCustomDeathLoot(@NotNull DamageSource source, int looting, boolean recentlyHitIn) {
-        super.dropCustomDeathLoot(source, looting, recentlyHitIn);
-        //TODO add drop
+        this.targetSelector.addGoal(1, new NearestAttackableTargetGoal<>(this, Player.class, true));
     }
 
     @Override
     protected SoundEvent getStepSoundEvent() {
-        return Objects.requireNonNull(ForgeRegistries.SOUND_EVENTS.getValue(ResourceLocation.parse("block.cave_vines.step")));
+        return Objects
+                .requireNonNull(ForgeRegistries.SOUND_EVENTS.getValue(ResourceLocation.parse("block.cave_vines.step")));
     }
 
     @Override
@@ -60,11 +59,13 @@ public class CrawlerEntity extends AbstractHordeZombieEntity {
 
     @Override
     public @NotNull SoundEvent getDeathSound() {
-        return Objects.requireNonNull(ForgeRegistries.SOUND_EVENTS.getValue(ResourceLocation.parse("entity.husk.death")));
+        return Objects
+                .requireNonNull(ForgeRegistries.SOUND_EVENTS.getValue(ResourceLocation.parse("entity.husk.death")));
     }
 
     /**
-     * Returns {@code true} if this entity should move as if it were on a ladder (either because it's actually on a
+     * Returns {@code true} if this entity should move as if it were on a ladder
+     * (either because it's actually on a
      * ladder, or for AI reasons)
      */
     public boolean onClimbable() {
@@ -72,7 +73,8 @@ public class CrawlerEntity extends AbstractHordeZombieEntity {
     }
 
     /**
-     * Returns {@code true} if the WatchableObject (Byte) is 0x01 otherwise returns {@code false}. The WatchableObject is
+     * Returns {@code true} if the WatchableObject (Byte) is 0x01 otherwise returns
+     * {@code false}. The WatchableObject is
      * updated using setBesideClimbableBlock.
      */
     public boolean isClimbing() {
@@ -80,15 +82,16 @@ public class CrawlerEntity extends AbstractHordeZombieEntity {
     }
 
     /**
-     * Updates the WatchableObject (Byte) created in entityInit(), setting it to 0x01 if par1 is true or 0x00 if it is
+     * Updates the WatchableObject (Byte) created in entityInit(), setting it to
+     * 0x01 if par1 is true or 0x00 if it is
      * false.
      */
     public void setClimbing(boolean pClimbing) {
         byte b0 = this.entityData.get(DATA_FLAGS_ID);
         if (pClimbing) {
-            b0 = (byte)(b0 | 1);
+            b0 = (byte) (b0 | 1);
         } else {
-            b0 = (byte)(b0 & -2);
+            b0 = (byte) (b0 & -2);
         }
 
         this.entityData.set(DATA_FLAGS_ID, b0);
@@ -100,7 +103,7 @@ public class CrawlerEntity extends AbstractHordeZombieEntity {
 
     protected void defineSynchedData() {
         super.defineSynchedData();
-        this.entityData.define(DATA_FLAGS_ID, (byte)0);
+        this.entityData.define(DATA_FLAGS_ID, (byte) 0);
     }
 
     /**
@@ -125,22 +128,20 @@ public class CrawlerEntity extends AbstractHordeZombieEntity {
 
     public static void init() {
         SpawnPlacements.register(ModEntities.CRAWLER.get(), Type.ON_GROUND, Types.MOTION_BLOCKING_NO_LEAVES,
-                (entityType, serverLevel, reason, pos, random) ->
-                        Config.getCrawlersSpawnNaturally()
-                                && !(serverLevel.getBiome(pos).is(Biomes.MUSHROOM_FIELDS))
-                                && !(serverLevel.getBiome(pos).is(Biomes.DEEP_DARK))
-                                && serverLevel.getDifficulty() != Difficulty.PEACEFUL
-                                && Monster.isDarkEnoughToSpawn(serverLevel, pos, random)
-                                && Mob.checkMobSpawnRules(entityType, serverLevel, reason, pos, random));
+                (entityType, serverLevel, reason, pos, random) -> Config.getCrawlersSpawnNaturally()
+                        && !(serverLevel.getBiome(pos).is(Biomes.MUSHROOM_FIELDS))
+                        && !(serverLevel.getBiome(pos).is(Biomes.DEEP_DARK))
+                        && serverLevel.getDifficulty() != Difficulty.PEACEFUL
+                        && Mob.checkMobSpawnRules(entityType, serverLevel, reason, pos, random));
     }
 
     public static AttributeSupplier.Builder createAttributes() {
         return createBaseAttributes()
-            .add(Attributes.MAX_HEALTH, 6.0)
-            .add(Attributes.MOVEMENT_SPEED, 0.35)
-            .add(Attributes.ATTACK_DAMAGE, 3.0)
-            .add(Attributes.ARMOR, 0.0)
-            .add(Attributes.ATTACK_KNOCKBACK, 0.0)
-            .add(Attributes.KNOCKBACK_RESISTANCE, 0.0);
+                .add(Attributes.MAX_HEALTH, 6.0)
+                .add(Attributes.MOVEMENT_SPEED, 0.35)
+                .add(Attributes.ATTACK_DAMAGE, 3.0)
+                .add(Attributes.ARMOR, 0.0)
+                .add(Attributes.ATTACK_KNOCKBACK, 0.0)
+                .add(Attributes.KNOCKBACK_RESISTANCE, 0.0);
     }
 }

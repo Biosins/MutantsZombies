@@ -43,7 +43,7 @@ public class ModEntities {
                                                         .setShouldReceiveVelocityUpdates(true)
                                                         .setTrackingRange(35)
                                                         .setUpdateInterval(3)
-                                                        .sized(2.0F, 2.7F)
+                                                        .sized(2.7F, 3.4F)
                                                         .build("zombie_brute"));
 
         public static void initModEntities() {
